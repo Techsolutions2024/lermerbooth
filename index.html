@@ -240,52 +240,28 @@
     </div>
 
     <script>
-        const CLOUD_NAME = 'dmo42iyl6';
-        const MANIFEST_BASE = `https://res.cloudinary.com/${CLOUD_NAME}/raw/upload/photobooth`;
-
+        // Gallery now uses ImageKit with embedded data (no Cloudinary)
         let photos = [];
         let currentIndex = 0;
 
         async function getDataFromURL() {
             const urlParams = new URLSearchParams(window.location.search);
 
-            // METHOD 1: Load from Cloudinary JSON URL (new, fastest QR)
-            const jsonParam = urlParams.get('json');
-            if (jsonParam) {
-                try {
-                    const jsonUrl = decodeURIComponent(jsonParam);
-                    console.log('Loading gallery from Cloudinary JSON:', jsonUrl);
-
-                    const response = await fetch(jsonUrl, { cache: 'no-store' });
-                    if (!response.ok) throw new Error('Failed to fetch gallery JSON');
-
-                    const parsedData = await response.json();
-
-                    // Support format: {s: "session_id", p: ["url1", "url2"]}
-                    if (parsedData.s && parsedData.p) {
-                        return {
-                            session_id: parsedData.s,
-                            photos: parsedData.p.map((url, idx) => ({
-                                url: url,
-                                filename: `photo_${idx + 1}.jpg`
-                            }))
-                        };
-                    }
-                } catch (e) {
-                    console.error('Error loading JSON from Cloudinary:', e);
-                }
-            }
-
-            // METHOD 2: Embedded data in URL (fallback)
+            // METHOD 1: Embedded data in URL (PRIMARY - from ImageKit QR code)
             const dataParam = urlParams.get('data');
             if (dataParam) {
                 try {
+                    console.log('📦 Loading gallery from embedded data...');
+
                     // Decode base64
                     const decodedData = atob(decodeURIComponent(dataParam));
                     const parsedData = JSON.parse(decodedData);
 
-                    // Support new format: {s: "session_id", p: ["url1", "url2"]}
-                    if (parsedData.s && parsedData.p) {
+                    console.log('✅ Parsed data:', parsedData);
+
+                    // Support format: {s: "session_id", p: ["url1", "url2", ...]}
+                    if (parsedData.s && parsedData.p && Array.isArray(parsedData.p)) {
+                        console.log(`✅ Found ${parsedData.p.length} photos for session ${parsedData.s}`);
                         return {
                             session_id: parsedData.s,
                             photos: parsedData.p.map((url, idx) => ({
@@ -305,28 +281,39 @@
                         };
                     }
                 } catch (e) {
-                    console.error('Error parsing data parameter:', e);
+                    console.error('❌ Error parsing data parameter:', e);
+                    console.error('Raw data param:', dataParam);
+                }
+            }
+
+            // METHOD 2: JSON URL (fallback for external JSON)
+            const jsonParam = urlParams.get('json');
+            if (jsonParam) {
+                try {
+                    const jsonUrl = decodeURIComponent(jsonParam);
+                    console.log('📦 Loading gallery from JSON URL:', jsonUrl);
+
+                    const response = await fetch(jsonUrl, { cache: 'no-store' });
+                    if (!response.ok) throw new Error('Failed to fetch gallery JSON');
+
+                    const parsedData = await response.json();
+
+                    // Support format: {s: "session_id", p: ["url1", "url2"]}
+                    if (parsedData.s && parsedData.p) {
+                        return {
+                            session_id: parsedData.s,
+                            photos: parsedData.p.map((url, idx) => ({
+                                url: url,
+                                filename: `photo_${idx + 1}.jpg`
+                            }))
+                        };
+                    }
+                } catch (e) {
+                    console.error('❌ Error loading JSON:', e);
                 }
             }
 
             return null;
-        }
-
-        function getSessionId() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const sessionParam = urlParams.get('session');
-            if (sessionParam) return sessionParam;
-            const pathMatch = window.location.pathname.match(/\/session\/(\d+)/);
-            return pathMatch ? pathMatch[1] : null;
-        }
-
-        async function fetchSessionManifest(sessionId) {
-            const manifestUrl = `${MANIFEST_BASE}/session${sessionId}/manifest.json`;
-            const response = await fetch(manifestUrl, { cache: 'no-store' });
-            if (!response.ok) {
-                throw new Error('Không tìm thấy manifest cho session này.');
-            }
-            return response.json();
         }
 
         function updateMainImage() {
@@ -396,34 +383,17 @@
         }
 
         async function init() {
-            // Try to get data from URL parameter first (new method)
+            // Get data from URL parameter (ImageKit QR code)
             const urlData = await getDataFromURL();
 
             if (urlData && urlData.photos && urlData.photos.length > 0) {
                 // Use data embedded in URL (QR code method)
                 photos = urlData.photos;
-                console.log(`Loaded ${photos.length} photos from URL data`);
+                console.log(`✅ Loaded ${photos.length} photos from ImageKit`);
             } else {
-                // Fallback to old method: fetch from Cloudinary manifest
-                const sessionId = getSessionId();
-
-                if (!sessionId) {
-                    showError('❌ Không tìm thấy session ID. Vui lòng quét lại QR code.');
-                    return;
-                }
-
-                try {
-                    const manifest = await fetchSessionManifest(sessionId);
-                    if (!manifest.photos || manifest.photos.length === 0) {
-                        showError('❌ Không tìm thấy ảnh cho session này.');
-                        return;
-                    }
-
-                    photos = manifest.photos.slice(0, 5);
-                } catch (error) {
-                    showError('❌ Lỗi tải ảnh: ' + error.message);
-                    return;
-                }
+                // No data found
+                showError('❌ Không tìm thấy dữ liệu ảnh. Vui lòng quét lại QR code từ máy photobooth.');
+                return;
             }
 
             try {
