@@ -245,21 +245,53 @@
         let currentIndex = 0;
 
         async function getDataFromURL() {
-            const urlParams = new URLSearchParams(window.location.search);
+            // METHOD 1: Session ID from path (PRIMARY - new format)
+            // URL format: https://lermerbooth.vercel.app/20251231_225132
+            const pathname = window.location.pathname;
+            const sessionMatch = pathname.match(/\/(\d{8}_\d{6})/);
 
-            // METHOD 1: Embedded data in URL (PRIMARY - from ImageKit QR code)
+            if (sessionMatch) {
+                const sessionId = sessionMatch[1];
+                console.log('📦 Loading gallery from session ID:', sessionId);
+
+                try {
+                    // Fetch manifest.json từ ImageKit
+                    const manifestUrl = `https://ik.imagekit.io/lermerbooth/sessions/${sessionId}/manifest.json`;
+                    console.log('📄 Fetching manifest:', manifestUrl);
+
+                    const response = await fetch(manifestUrl, { cache: 'no-store' });
+
+                    if (response.ok) {
+                        const manifestData = await response.json();
+                        console.log('✅ Manifest loaded:', manifestData);
+
+                        // Format: {s: "session_id", p: ["url1", "url2", ...]}
+                        if (manifestData.s && manifestData.p && Array.isArray(manifestData.p)) {
+                            return {
+                                session_id: manifestData.s,
+                                photos: manifestData.p.map((url, idx) => ({
+                                    url: url,
+                                    filename: `photo_${idx + 1}.jpg`
+                                }))
+                            };
+                        }
+                    } else {
+                        console.error('❌ Manifest not found (404)');
+                    }
+                } catch (e) {
+                    console.error('❌ Error fetching manifest:', e);
+                }
+            }
+
+            // METHOD 2: Query parameter fallback (old embedded data format)
+            const urlParams = new URLSearchParams(window.location.search);
             const dataParam = urlParams.get('data');
             if (dataParam) {
                 try {
                     console.log('📦 Loading gallery from embedded data...');
-
-                    // Decode base64
                     const decodedData = atob(decodeURIComponent(dataParam));
                     const parsedData = JSON.parse(decodedData);
 
-                    console.log('✅ Parsed data:', parsedData);
-
-                    // Support format: {s: "session_id", p: ["url1", "url2", ...]}
                     if (parsedData.s && parsedData.p && Array.isArray(parsedData.p)) {
                         console.log(`✅ Found ${parsedData.p.length} photos for session ${parsedData.s}`);
                         return {
@@ -270,46 +302,8 @@
                             }))
                         };
                     }
-
-                    // Support old format: {session_id: "...", photos: [{url, filename}]}
-                    if (parsedData.session_id && parsedData.photos) {
-                        return {
-                            session_id: parsedData.session_id,
-                            photos: Array.isArray(parsedData.photos[0])
-                                ? parsedData.photos.map((url, idx) => ({ url, filename: `photo_${idx + 1}.jpg` }))
-                                : parsedData.photos
-                        };
-                    }
                 } catch (e) {
                     console.error('❌ Error parsing data parameter:', e);
-                    console.error('Raw data param:', dataParam);
-                }
-            }
-
-            // METHOD 2: JSON URL (fallback for external JSON)
-            const jsonParam = urlParams.get('json');
-            if (jsonParam) {
-                try {
-                    const jsonUrl = decodeURIComponent(jsonParam);
-                    console.log('📦 Loading gallery from JSON URL:', jsonUrl);
-
-                    const response = await fetch(jsonUrl, { cache: 'no-store' });
-                    if (!response.ok) throw new Error('Failed to fetch gallery JSON');
-
-                    const parsedData = await response.json();
-
-                    // Support format: {s: "session_id", p: ["url1", "url2"]}
-                    if (parsedData.s && parsedData.p) {
-                        return {
-                            session_id: parsedData.s,
-                            photos: parsedData.p.map((url, idx) => ({
-                                url: url,
-                                filename: `photo_${idx + 1}.jpg`
-                            }))
-                        };
-                    }
-                } catch (e) {
-                    console.error('❌ Error loading JSON:', e);
                 }
             }
 
@@ -318,16 +312,30 @@
 
         function updateMainImage() {
             const mainImage = document.getElementById('mainImage');
-            mainImage.src = photos[currentIndex].url;
-            
-            document.getElementById('photoCounter').textContent = 
+            const imageUrl = photos[currentIndex].url;
+
+            console.log(`📷 Loading image ${currentIndex + 1}: ${imageUrl}`);
+
+            // Add error handler
+            mainImage.onerror = function() {
+                console.error(`❌ Failed to load image: ${imageUrl}`);
+                mainImage.alt = `Failed to load image ${currentIndex + 1}`;
+            };
+
+            mainImage.onload = function() {
+                console.log(`✅ Image ${currentIndex + 1} loaded successfully`);
+            };
+
+            mainImage.src = imageUrl;
+
+            document.getElementById('photoCounter').textContent =
                 `${currentIndex + 1} / ${photos.length}`;
-            
+
             // Update thumbnails active state
             document.querySelectorAll('.thumbnail').forEach((thumb, idx) => {
                 thumb.classList.toggle('active', idx === currentIndex);
             });
-            
+
             // Update navigation buttons
             document.getElementById('prevBtn').disabled = currentIndex === 0;
             document.getElementById('nextBtn').disabled = currentIndex === photos.length - 1;
@@ -337,10 +345,11 @@
             const container = document.getElementById('thumbnailsContainer');
             container.innerHTML = photos.map((photo, idx) => `
                 <div class="thumbnail ${idx === 0 ? 'active' : ''}" data-index="${idx}">
-                    <img src="${photo.url}" alt="Thumbnail ${idx + 1}">
+                    <img src="${photo.url}" alt="Thumbnail ${idx + 1}"
+                         onerror="console.error('Thumbnail ${idx + 1} failed:', '${photo.url}')">
                 </div>
             `).join('');
-            
+
             // Add click listeners
             document.querySelectorAll('.thumbnail').forEach(thumb => {
                 thumb.addEventListener('click', () => {
