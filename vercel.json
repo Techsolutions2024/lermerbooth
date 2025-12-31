@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/:session",
+      "destination": "/index.html"
+    }
+  ]
+}
