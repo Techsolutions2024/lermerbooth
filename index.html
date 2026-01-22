@@ -392,6 +392,52 @@
             document.getElementById('error').textContent = message;
         }
 
+        function showUploadingState() {
+            const loadingEl = document.getElementById('loading');
+            loadingEl.style.display = 'block';
+            loadingEl.innerHTML = `
+                <div style="text-align: center; padding: 50px; color: #CAB394;">
+                    <div class="spinner" style="
+                        border: 8px solid rgba(202, 179, 148, 0.2);
+                        border-top: 8px solid #CAB394;
+                        border-radius: 50%;
+                        width: 80px;
+                        height: 80px;
+                        animation: spin 1s linear infinite;
+                        margin: 0 auto 30px auto;
+                    "></div>
+                    <h2 style="color: #CAB394; margin-bottom: 20px; font-size: 32px;">
+                        Đang xử lý ảnh của bạn...
+                    </h2>
+                    <p style="color: #CAB394; font-size: 20px; line-height: 1.6;">
+                        Ảnh sẽ sẵn sàng trong vài phút.<br>
+                        Trang sẽ tự động tải lại sau <span id="countdown">10</span> giây.
+                    </p>
+                </div>
+                <style>
+                    @keyframes spin {
+                        0% { transform: rotate(0deg); }
+                        100% { transform: rotate(360deg); }
+                    }
+                </style>
+            `;
+
+            // Countdown và auto reload
+            let countdown = 10;
+            const countdownEl = document.getElementById('countdown');
+            const timer = setInterval(() => {
+                countdown--;
+                if (countdownEl) {
+                    countdownEl.textContent = countdown;
+                }
+                if (countdown <= 0) {
+                    clearInterval(timer);
+                    console.log("🔄 Reloading to check for photos...");
+                    window.location.reload();
+                }
+            }, 1000);
+        }
+
         async function init() {
             // Get data from URL parameter (ImageKit QR code)
             const urlData = await getDataFromURL();
@@ -401,8 +447,9 @@
                 photos = urlData.photos;
                 console.log(`✅ Loaded ${photos.length} photos from ImageKit`);
             } else {
-                // No data found
-                showError('❌ Không tìm thấy dữ liệu ảnh. Vui lòng quét lại QR code từ máy photobooth.');
+                // No data found - ảnh chưa upload xong
+                console.log('⏳ Photos not ready yet, showing upload state...');
+                showUploadingState();
                 return;
             }
 
