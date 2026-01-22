@@ -256,8 +256,7 @@
 
                 try {
                     // Fetch manifest.json từ ImageKit
-                    // IMPORTANT: Use correct ImageKit URL endpoint (lermer, not lermerbooth)
-                    const manifestUrl = `https://ik.imagekit.io/lermer/sessions/${sessionId}/manifest.json`;
+                    const manifestUrl = `https://ik.imagekit.io/lermerbooth/sessions/${sessionId}/manifest.json`;
                     console.log('📄 Fetching manifest:', manifestUrl);
 
                     const response = await fetch(manifestUrl, { cache: 'no-store' });
