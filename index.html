@@ -285,7 +285,61 @@
             return null; // Fallback or not found
         }
 
-        // ... (Keep updateMainImage, createThumbnails, downloadImage, downloadAllImages, single parts as is) ...
+        function showError(message) {
+            document.getElementById('loading').style.display = 'none';
+            const errorEl = document.getElementById('error');
+            errorEl.textContent = message;
+            errorEl.style.display = 'block';
+        }
+
+        function updateMainImage() {
+            if (photos.length === 0) return;
+            const mainImg = document.getElementById('mainImage');
+            mainImg.src = photos[currentIndex].url;
+            document.getElementById('photoCounter').textContent = `${currentIndex + 1} / ${photos.length}`;
+            document.getElementById('prevBtn').disabled = currentIndex === 0;
+            document.getElementById('nextBtn').disabled = currentIndex === photos.length - 1;
+
+            // Update active thumbnail
+            document.querySelectorAll('.thumbnail').forEach((thumb, idx) => {
+                thumb.classList.toggle('active', idx === currentIndex);
+            });
+        }
+
+        function createThumbnails() {
+            const container = document.getElementById('thumbnailsContainer');
+            container.innerHTML = '';
+            photos.forEach((photo, idx) => {
+                const thumb = document.createElement('div');
+                thumb.className = 'thumbnail' + (idx === 0 ? ' active' : '');
+                thumb.innerHTML = `<img src="${photo.url}" alt="Photo ${idx + 1}">`;
+                thumb.onclick = () => { currentIndex = idx; updateMainImage(); };
+                container.appendChild(thumb);
+            });
+        }
+
+        async function downloadImage(url, filename) {
+            try {
+                const response = await fetch(url, { mode: 'cors' });
+                const blob = await response.blob();
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = filename;
+                link.click();
+                URL.revokeObjectURL(link.href);
+            } catch (e) {
+                // Fallback: open in new tab
+                window.open(url, '_blank');
+            }
+        }
+
+        async function downloadAllImages() {
+            for (let i = 0; i < photos.length; i++) {
+                await downloadImage(photos[i].url, photos[i].filename || `photo_${i + 1}.jpg`);
+                // Small delay between downloads to avoid browser blocking
+                await new Promise(r => setTimeout(r, 300));
+            }
+        }
 
         function showUploadingState() {
             const loadingEl = document.getElementById('loading');
