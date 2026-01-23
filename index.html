@@ -188,6 +188,54 @@
             margin-top: 10px;
         }
 
+        .video-section {
+            width: 100%;
+            max-width: 900px;
+            margin-top: 30px;
+            text-align: center;
+        }
+
+        .video-section h2 {
+            color: #CAB394;
+            font-size: 24px;
+            margin-bottom: 15px;
+        }
+
+        .video-container {
+            position: relative;
+            background-color: rgba(0,0,0,0.4);
+            border-radius: 12px;
+            overflow: hidden;
+            border: 2px solid rgba(202,179,148,0.3);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+        }
+
+        .video-container video {
+            width: 100%;
+            display: block;
+            max-height: 500px;
+            border-radius: 10px;
+        }
+
+        .download-video-btn {
+            margin-top: 15px;
+            background-color: #CAB394;
+            color: #3E2C19;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .download-video-btn:hover {
+            background-color: #E5D4B8;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+
         @media (max-width: 768px) {
             h1 { font-size: 32px; }
             .download-all-btn {
@@ -237,11 +285,24 @@
         <div class="photo-counter" id="photoCounter">1 / 5</div>
         
         <div class="thumbnails-container" id="thumbnailsContainer"></div>
+
+        <div class="video-section" id="videoSection" style="display: none;">
+            <h2>Video Slideshow</h2>
+            <div class="video-container">
+                <video id="videoPlayer" controls playsinline loop>
+                    <source id="videoSource" src="" type="video/mp4">
+                </video>
+            </div>
+            <button class="download-video-btn" id="downloadVideoBtn">
+                Download Video
+            </button>
+        </div>
     </div>
 
     <script>
         // Gallery now uses ImageKit with embedded data (no Cloudinary)
         let photos = [];
+        let videoUrl = null;
         let currentIndex = 0;
 
         async function getDataFromURL() {
@@ -271,7 +332,8 @@
                                 photos: manifestData.p.map((url, idx) => ({
                                     url: url,
                                     filename: `photo_${idx + 1}.jpg`
-                                }))
+                                })),
+                                video_url: manifestData.v || null
                             };
                         }
                     } else {
@@ -336,8 +398,11 @@
         async function downloadAllImages() {
             for (let i = 0; i < photos.length; i++) {
                 await downloadImage(photos[i].url, photos[i].filename || `photo_${i + 1}.jpg`);
-                // Small delay between downloads to avoid browser blocking
                 await new Promise(r => setTimeout(r, 300));
+            }
+            // Download video if available
+            if (videoUrl) {
+                await downloadImage(videoUrl, 'slideshow.mp4');
             }
         }
 
@@ -374,6 +439,7 @@
                 if (data && data.photos.length > 0) {
                     clearInterval(pollInterval);
                     photos = data.photos;
+                    videoUrl = data.video_url;
                     console.log("✅ Photos polling successful!");
                     renderGallery();
                 }
@@ -385,21 +451,35 @@
             try {
                 createThumbnails();
                 updateMainImage();
-                
+
                 document.getElementById('prevBtn').onclick = () => {
                     if (currentIndex > 0) { currentIndex--; updateMainImage(); }
                 };
                 document.getElementById('nextBtn').onclick = () => {
                     if (currentIndex < photos.length - 1) { currentIndex++; updateMainImage(); }
                 };
-                
+
                 document.getElementById('downloadSingleBtn').onclick = () => {
                     downloadImage(photos[currentIndex].url, `photo_${currentIndex + 1}.jpg`);
                 };
-                
+
                 const dlAllBtn = document.getElementById('downloadAllBtn');
                 dlAllBtn.addEventListener('click', downloadAllImages);
                 dlAllBtn.style.display = 'block';
+
+                // Show video section if video URL exists
+                if (videoUrl) {
+                    const videoSection = document.getElementById('videoSection');
+                    const videoSource = document.getElementById('videoSource');
+                    const videoPlayer = document.getElementById('videoPlayer');
+                    videoSource.src = videoUrl;
+                    videoPlayer.load();
+                    videoSection.style.display = 'block';
+
+                    document.getElementById('downloadVideoBtn').onclick = () => {
+                        downloadImage(videoUrl, 'slideshow.mp4');
+                    };
+                }
 
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('content').style.display = 'flex';
@@ -412,6 +492,7 @@
             const urlData = await getDataFromURL();
             if (urlData && urlData.photos && urlData.photos.length > 0) {
                 photos = urlData.photos;
+                videoUrl = urlData.video_url;
                 renderGallery();
             } else {
                 showUploadingState();
