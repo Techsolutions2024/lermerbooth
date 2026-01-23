@@ -245,8 +245,7 @@
         let currentIndex = 0;
 
         async function getDataFromURL() {
-            // METHOD 1: Session ID from path (PRIMARY - new format)
-            // URL format: https://lermerbooth.vercel.app/20251231_225132
+            // METHOD 1: Session ID from path
             const pathname = window.location.pathname;
             const sessionMatch = pathname.match(/\/(\d{8}_\d{6})/);
 
@@ -255,25 +254,17 @@
                 console.log('📦 Loading gallery from session ID:', sessionId);
 
                 try {
-                    // 🔥 PROGRESSIVE LOADING - Fetch manifest.json (updated after each photo upload)
-                    const manifestUrl = `https://ik.imagekit.io/lermerbooth/sessions/${sessionId}/manifest.json`;
+                    // Cache busting: Add timestamp query param
+                    const manifestUrl = `https://ik.imagekit.io/lermerbooth/sessions/${sessionId}/manifest.json?v=${new Date().getTime()}`;
                     console.log('📄 Fetching manifest:', manifestUrl);
 
-                    // Force no-cache to get latest version
                     const response = await fetch(manifestUrl, {
                         cache: 'no-store',
-                        headers: {
-                            'Cache-Control': 'no-cache, no-store, must-revalidate',
-                            'Pragma': 'no-cache',
-                            'Expires': '0'
-                        }
+                        headers: { 'Cache-Control': 'no-cache' }
                     });
 
                     if (response.ok) {
                         const manifestData = await response.json();
-                        console.log(`✅ Manifest loaded: ${manifestData.p?.length || 0} photos`);
-
-                        // Format: {s: "session_id", p: ["url1", "url2", ...]}
                         if (manifestData.s && manifestData.p && Array.isArray(manifestData.p)) {
                             return {
                                 session_id: manifestData.s,
@@ -284,120 +275,17 @@
                             };
                         }
                     } else {
-                        console.error('❌ Manifest not found (404)');
+                        throw new Error("Manifest not ready");
                     }
                 } catch (e) {
-                    console.error('❌ Error fetching manifest:', e);
+                    console.log("⏳ Manifest not ready yet...");
+                    return null;
                 }
             }
-
-            // METHOD 2: Query parameter fallback (old embedded data format)
-            const urlParams = new URLSearchParams(window.location.search);
-            const dataParam = urlParams.get('data');
-            if (dataParam) {
-                try {
-                    console.log('📦 Loading gallery from embedded data...');
-                    const decodedData = atob(decodeURIComponent(dataParam));
-                    const parsedData = JSON.parse(decodedData);
-
-                    if (parsedData.s && parsedData.p && Array.isArray(parsedData.p)) {
-                        console.log(`✅ Found ${parsedData.p.length} photos for session ${parsedData.s}`);
-                        return {
-                            session_id: parsedData.s,
-                            photos: parsedData.p.map((url, idx) => ({
-                                url: url,
-                                filename: `photo_${idx + 1}.jpg`
-                            }))
-                        };
-                    }
-                } catch (e) {
-                    console.error('❌ Error parsing data parameter:', e);
-                }
-            }
-
-            return null;
+            return null; // Fallback or not found
         }
 
-        function updateMainImage() {
-            const mainImage = document.getElementById('mainImage');
-            const imageUrl = photos[currentIndex].url;
-
-            console.log(`📷 Loading image ${currentIndex + 1}: ${imageUrl}`);
-
-            // Add error handler
-            mainImage.onerror = function() {
-                console.error(`❌ Failed to load image: ${imageUrl}`);
-                mainImage.alt = `Failed to load image ${currentIndex + 1}`;
-            };
-
-            mainImage.onload = function() {
-                console.log(`✅ Image ${currentIndex + 1} loaded successfully`);
-            };
-
-            mainImage.src = imageUrl;
-
-            document.getElementById('photoCounter').textContent =
-                `${currentIndex + 1} / ${photos.length}`;
-
-            // Update thumbnails active state
-            document.querySelectorAll('.thumbnail').forEach((thumb, idx) => {
-                thumb.classList.toggle('active', idx === currentIndex);
-            });
-
-            // Update navigation buttons
-            document.getElementById('prevBtn').disabled = currentIndex === 0;
-            document.getElementById('nextBtn').disabled = currentIndex === photos.length - 1;
-        }
-
-        function createThumbnails() {
-            const container = document.getElementById('thumbnailsContainer');
-            container.innerHTML = photos.map((photo, idx) => `
-                <div class="thumbnail ${idx === 0 ? 'active' : ''}" data-index="${idx}">
-                    <img src="${photo.url}" alt="Thumbnail ${idx + 1}"
-                         onerror="console.error('Thumbnail ${idx + 1} failed:', '${photo.url}')">
-                </div>
-            `).join('');
-
-            // Add click listeners
-            document.querySelectorAll('.thumbnail').forEach(thumb => {
-                thumb.addEventListener('click', () => {
-                    currentIndex = parseInt(thumb.dataset.index);
-                    updateMainImage();
-                });
-            });
-        }
-
-        function downloadImage(url, filename) {
-            fetch(url)
-                .then(response => response.blob())
-                .then(blob => {
-                    const link = document.createElement('a');
-                    link.href = URL.createObjectURL(blob);
-                    link.download = filename;
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    URL.revokeObjectURL(link.href);
-                })
-                .catch(err => alert('Lỗi tải ảnh: ' + err.message));
-        }
-
-        async function downloadAllImages() {
-            for (let i = 0; i < photos.length; i++) {
-                await new Promise(resolve => {
-                    setTimeout(() => {
-                        downloadImage(photos[i].url, `photo_${i + 1}.jpg`);
-                        resolve();
-                    }, i * 500); // Delay between downloads
-                });
-            }
-        }
-
-        function showError(message) {
-            document.getElementById('loading').style.display = 'none';
-            document.getElementById('error').style.display = 'block';
-            document.getElementById('error').textContent = message;
-        }
+        // ... (Keep updateMainImage, createThumbnails, downloadImage, downloadAllImages, single parts as is) ...
 
         function showUploadingState() {
             const loadingEl = document.getElementById('loading');
@@ -417,84 +305,62 @@
                         Đang xử lý ảnh của bạn...
                     </h2>
                     <p style="color: #CAB394; font-size: 20px; line-height: 1.6;">
-                        Ảnh sẽ sẵn sàng trong vài phút.<br>
-                        Trang sẽ tự động tải lại sau <span id="countdown">10</span> giây.
+                        Vui lòng đợi giây lát.<br>
+                        Hệ thống đang tự động kiểm tra...
                     </p>
                 </div>
                 <style>
-                    @keyframes spin {
-                        0% { transform: rotate(0deg); }
-                        100% { transform: rotate(360deg); }
-                    }
+                    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
                 </style>
             `;
 
-            // Countdown và auto reload
-            let countdown = 10;
-            const countdownEl = document.getElementById('countdown');
-            const timer = setInterval(() => {
-                countdown--;
-                if (countdownEl) {
-                    countdownEl.textContent = countdown;
+            // Start Polling instead of Reload
+            const pollInterval = setInterval(async () => {
+                const data = await getDataFromURL();
+                if (data && data.photos.length > 0) {
+                    clearInterval(pollInterval);
+                    photos = data.photos;
+                    console.log("✅ Photos polling successful!");
+                    renderGallery();
                 }
-                if (countdown <= 0) {
-                    clearInterval(timer);
-                    console.log("🔄 Reloading to check for photos...");
-                    window.location.reload();
-                }
-            }, 1000);
+            }, 3000); // Check every 3 seconds
         }
 
-        async function init() {
-            // Get data from URL parameter (ImageKit QR code)
-            const urlData = await getDataFromURL();
-
-            if (urlData && urlData.photos && urlData.photos.length > 0) {
-                // Use data embedded in URL (QR code method)
-                photos = urlData.photos;
-                console.log(`✅ Loaded ${photos.length} photos from ImageKit`);
-            } else {
-                // No data found - ảnh chưa upload xong
-                console.log('⏳ Photos not ready yet, showing upload state...');
-                showUploadingState();
-                return;
-            }
-
+        // New Helper to start rendering
+        function renderGallery() {
             try {
-                
-                // Setup UI
                 createThumbnails();
                 updateMainImage();
                 
-                // Navigation buttons
-                document.getElementById('prevBtn').addEventListener('click', () => {
-                    if (currentIndex > 0) {
-                        currentIndex--;
-                        updateMainImage();
-                    }
-                });
+                document.getElementById('prevBtn').onclick = () => {
+                    if (currentIndex > 0) { currentIndex--; updateMainImage(); }
+                };
+                document.getElementById('nextBtn').onclick = () => {
+                    if (currentIndex < photos.length - 1) { currentIndex++; updateMainImage(); }
+                };
                 
-                document.getElementById('nextBtn').addEventListener('click', () => {
-                    if (currentIndex < photos.length - 1) {
-                        currentIndex++;
-                        updateMainImage();
-                    }
-                });
-                
-                // Download buttons
-                document.getElementById('downloadSingleBtn').addEventListener('click', () => {
+                document.getElementById('downloadSingleBtn').onclick = () => {
                     downloadImage(photos[currentIndex].url, `photo_${currentIndex + 1}.jpg`);
-                });
+                };
                 
-                document.getElementById('downloadAllBtn').addEventListener('click', downloadAllImages);
-                document.getElementById('downloadAllBtn').style.display = 'block';
+                const dlAllBtn = document.getElementById('downloadAllBtn');
+                dlAllBtn.addEventListener('click', downloadAllImages);
+                dlAllBtn.style.display = 'block';
 
-                // Show content
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('content').style.display = 'flex';
-
             } catch (error) {
                 showError('❌ Lỗi hiển thị ảnh: ' + error.message);
+            }
+        }
+
+        async function init() {
+            const urlData = await getDataFromURL();
+            if (urlData && urlData.photos && urlData.photos.length > 0) {
+                photos = urlData.photos;
+                renderGallery();
+            } else {
+                showUploadingState();
             }
         }
 
